@@ -39,8 +39,12 @@ create table if not exists public.site_photos (
   description text not null default '',
   image_url text not null,
   storage_path text not null,
+  media_type text not null default 'image' check (media_type in ('image', 'video')),
   created_at timestamptz not null default now()
 );
+
+alter table public.site_photos
+  add column if not exists media_type text not null default 'image' check (media_type in ('image', 'video'));
 
 alter table public.site_settings enable row level security;
 alter table public.site_services enable row level security;
@@ -62,7 +66,7 @@ drop policy if exists "Authenticated can manage photos" on public.site_photos;
 create policy "Authenticated can manage photos" on public.site_photos for all to authenticated using (true) with check (true);
 
 -- Storage: creá un bucket público llamado tech-zone-photos en Storage.
--- Estas políticas permiten que usuarios autenticados suban y eliminen fotos.
+-- Estas políticas permiten que usuarios autenticados suban y eliminen contenido de la galería.
 drop policy if exists "Authenticated can upload Tech Zone photos" on storage.objects;
 create policy "Authenticated can upload Tech Zone photos" on storage.objects for insert to authenticated with check (bucket_id = 'tech-zone-photos');
 drop policy if exists "Authenticated can update Tech Zone photos" on storage.objects;

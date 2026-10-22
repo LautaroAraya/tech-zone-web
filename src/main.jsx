@@ -50,7 +50,7 @@ function App() {
   const [mobileMenu, setMobileMenu] = useState(false);
   const [photoTitle, setPhotoTitle] = useState('');
   const [photoDescription, setPhotoDescription] = useState('');
-  const [photoFile, setPhotoFile] = useState(null);
+  const [mediaFile, setMediaFile] = useState(null);
   const [newService, setNewService] = useState({ title: '', description: '' });
 
   useEffect(() => {
@@ -95,32 +95,41 @@ function App() {
     setNotice(error ? 'No se pudo guardar. Revisá la configuración de Supabase.' : 'Configuración guardada correctamente.');
   }
 
-  async function uploadPhoto(e) {
+  async function uploadGalleryMedia(e) {
     e.preventDefault();
-    if (!photoFile) { setNotice('Elegí una imagen antes de publicar.'); return; }
+    if (!mediaFile) { setNotice('Elegí una foto o un video antes de publicar.'); return; }
+    const mediaType = mediaFile.type.startsWith('video/') ? 'video' : 'image';
+    const allowedTypes = mediaType === 'video'
+      ? ['video/mp4', 'video/webm']
+      : ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(mediaFile.type)) {
+      setNotice('Formato no compatible. Usá JPG, PNG, WEBP, MP4 o WEBM.');
+      return;
+    }
     setBusy(true); setNotice('');
-    const safeName = photoFile.name.toLowerCase().replace(/[^a-z0-9._-]/g, '-');
+    const safeName = mediaFile.name.toLowerCase().replace(/[^a-z0-9._-]/g, '-');
     const path = `${Date.now()}-${safeName}`;
-    const { error: uploadError } = await supabase.storage.from('tech-zone-photos').upload(path, photoFile, { upsert: false });
+    const { error: uploadError } = await supabase.storage.from('tech-zone-photos').upload(path, mediaFile, { upsert: false });
     if (uploadError) {
-      setBusy(false); setNotice('No se pudo subir la imagen. Revisá el bucket y sus permisos.'); return;
+      setBusy(false); setNotice('No se pudo subir el archivo. Revisá los permisos y el límite de tamaño del bucket.'); return;
     }
     const { data: urlData } = supabase.storage.from('tech-zone-photos').getPublicUrl(path);
     const { error } = await supabase.from('site_photos').insert({
       title: moneyless(photoTitle) || 'Trabajo realizado',
       description: moneyless(photoDescription),
       image_url: urlData.publicUrl,
-      storage_path: path
+      storage_path: path,
+      media_type: mediaType
     });
     setBusy(false);
-    if (error) { setNotice('La imagen se subió, pero no se pudo publicar en la galería.'); return; }
-    setPhotoTitle(''); setPhotoDescription(''); setPhotoFile(null);
-    const input = document.getElementById('photo-file'); if (input) input.value = '';
-    setNotice('Foto publicada en la galería.'); await loadPublicData();
+    if (error) { setNotice('El archivo se subió, pero no se pudo publicar en la galería.'); return; }
+    setPhotoTitle(''); setPhotoDescription(''); setMediaFile(null);
+    const input = document.getElementById('gallery-media-file'); if (input) input.value = '';
+    setNotice(`${mediaType === 'video' ? 'Video' : 'Foto'} publicada en la galería.`); await loadPublicData();
   }
 
   async function deletePhoto(photo) {
-    if (!confirm('¿Querés eliminar esta foto de la galería?')) return;
+    if (!confirm('¿Querés eliminar este archivo de la galería?')) return;
     setBusy(true);
     await supabase.storage.from('tech-zone-photos').remove([photo.storage_path]);
     const { error } = await supabase.from('site_photos').delete().eq('id', photo.id);
@@ -178,7 +187,7 @@ function App() {
           <a href="#admin-galeria">Galería</a><a href="#admin-servicios">Servicios</a><a href="#admin-config">Configuración</a>
           <button className="btn outline small" onClick={logout}><LogOut size={16}/> Cerrar sesión</button>
         </> : <>
-          <a href="#servicios" onClick={()=>setMobileMenu(false)}>Servicios</a><a href="#trabajos" onClick={()=>setMobileMenu(false)}>Trabajos</a><a href="#contacto" onClick={()=>setMobileMenu(false)}>Contacto</a>
+          <a href="#servicios" onClick={()=>setMobileMenu(false)}>Servicios</a><a href="#trabajos" onClick={()=>setMobileMenu(false)}>Trabajos</a><a href="#accesorios-3d" onClick={()=>setMobileMenu(false)} style={{ fontSize: '11px', whiteSpace: 'nowrap' }}>Accesorios para celulares impresos en 3D</a><a href="#contacto" onClick={()=>setMobileMenu(false)}>Contacto</a>
           {whatsappLink && <a className="btn primary small" href={whatsappLink} target="_blank" rel="noreferrer"><MessageCircle size={16}/> Consultar</a>}
         </>}
       </nav>
@@ -188,18 +197,18 @@ function App() {
       <section className="admin-heading"><div><span className="eyebrow">TECH ZONE / ADMIN</span><h1>Tu negocio, a tu manera.</h1><p>Administrá las fotos, los servicios y los datos que aparecen en tu página.</p></div><button className="btn outline" onClick={()=>{setView('client');loadPublicData();}}><Camera size={17}/> Ver página pública</button></section>
       {notice && <div className="notice"><Check size={17}/>{notice}<button onClick={()=>setNotice('')} aria-label="Cerrar"><X size={16}/></button></div>}
       <section className="admin-section" id="admin-galeria">
-        <div className="section-title"><div><span className="eyebrow">01 / PORTFOLIO</span><h2>Galería de trabajos</h2><p>Las fotos se muestran públicamente cuando las publicás acá.</p></div><span className="count">{photos.length} {photos.length === 1 ? 'foto' : 'fotos'}</span></div>
+        <div className="section-title"><div><span className="eyebrow">01 / PORTFOLIO</span><h2>Galería de trabajos</h2><p>Las fotos y videos se muestran públicamente cuando los publicás acá.</p></div><span className="count">{photos.length} {photos.length === 1 ? 'archivo' : 'archivos'}</span></div>
         <div className="admin-grid">
-          <form className="panel stack" onSubmit={uploadPhoto}>
-            <h3><UploadCloud size={20}/> Publicar una foto</h3>
-            <label className="upload-zone" htmlFor="photo-file"><UploadCloud size={30}/><b>{photoFile ? photoFile.name : 'Elegí una imagen'}</b><span>JPG, PNG o WEBP</span><input id="photo-file" type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>setPhotoFile(e.target.files?.[0] || null)} required /></label>
+          <form className="panel stack" onSubmit={uploadGalleryMedia}>
+            <h3><UploadCloud size={20}/> Publicar foto o video</h3>
+            <label className="upload-zone" htmlFor="gallery-media-file"><UploadCloud size={30}/><b>{mediaFile ? mediaFile.name : 'Elegí una foto o un video'}</b><span>JPG, PNG, WEBP, MP4 o WEBM</span><input id="gallery-media-file" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" onChange={e=>setMediaFile(e.target.files?.[0] || null)} required /></label>
             <label>Título<input value={photoTitle} onChange={e=>setPhotoTitle(e.target.value)} placeholder="Ej.: Cambio de módulo" /></label>
             <label>Descripción<textarea value={photoDescription} onChange={e=>setPhotoDescription(e.target.value)} placeholder="Contá brevemente qué trabajo realizaste…" rows="3"/></label>
             <button className="btn primary full" disabled={busy}><Plus size={17}/>{busy ? 'Publicando…' : 'Publicar en el carrusel'}</button>
           </form>
-          <div className="panel"><h3><Camera size={20}/> Fotos publicadas</h3>
-            {!photos.length ? <div className="empty"><Camera size={34}/><b>La galería está vacía</b><span>Cuando subas tu primera foto, aparecerá en la página de tus clientes.</span></div> :
-            <div className="photo-grid">{photos.map(photo=><article className="photo-admin" key={photo.id}><img src={photo.image_url} alt={photo.title}/><div><b>{photo.title}</b><p>{photo.description}</p><button className="icon-btn danger" onClick={()=>deletePhoto(photo)} title="Eliminar foto"><Trash2 size={17}/></button></div></article>)}</div>}
+          <div className="panel"><h3><Camera size={20}/> Fotos y videos publicados</h3>
+            {!photos.length ? <div className="empty"><Camera size={34}/><b>La galería está vacía</b><span>Cuando subas tu primera foto o video, aparecerá en la página de tus clientes.</span></div> :
+            <div className="photo-grid">{photos.map(photo=><article className="photo-admin" key={photo.id}>{photo.media_type === 'video' ? <video className="admin-media-preview" src={photo.image_url} controls playsInline preload="metadata" /> : <img src={photo.image_url} alt={photo.title}/>}<div><b>{photo.title}</b><p>{photo.description}</p><button className="icon-btn danger" onClick={()=>deletePhoto(photo)} title="Eliminar archivo"><Trash2 size={17}/></button></div></article>)}</div>}
           </div>
         </div>
       </section>
@@ -223,7 +232,8 @@ function App() {
       <section className="hero" id="inicio"><div className="hero-bg"></div><div className="hero-copy"><span className="eyebrow"><span className="live-dot"></span> SERVICIO TÉCNICO · SAN JUSTO</span><h1>Tu tecnología,<br/><em>en buenas manos.</em></h1><p>{settings.about || defaultSettings.about}</p><div className="hero-actions">{whatsappLink ? <a className="btn primary" href={whatsappLink} target="_blank" rel="noreferrer"><MessageCircle size={18}/> Pedir diagnóstico <ArrowRight size={17}/></a> : <a className="btn primary" href="#contacto"><MessageCircle size={18}/> Consultar servicio <ArrowRight size={17}/></a>}<a className="btn outline" href="#servicios">Ver servicios</a></div><div className="hero-proof"><span><ShieldCheck size={17}/> Atención personalizada</span><span><BadgeCheck size={17}/> Diagnóstico claro</span></div></div><div className="hero-art"><div className="orb orb-one"></div><div className="orb orb-two"></div><img src="/tech-zone-logo.png" alt="Logo Tech Zone" className="hero-logo"/><div className="floating-tag tag-one"><MonitorCog size={18}/><span><b>Mantenimiento</b><small>PC y notebooks</small></span></div><div className="floating-tag tag-two"><Smartphone size={18}/><span><b>Reparación móvil</b><small>Pantallas y baterías</small></span></div></div><a className="scroll-cue" href="#servicios"><span></span> DESCUBRÍ LO QUE HACEMOS</a></section>
       <section className="trust-strip"><div><Wrench/><span><b>Soluciones técnicas</b><small>Para tus dispositivos</small></span></div><div><ShieldCheck/><span><b>Atención directa</b><small>Hablás con nosotros</small></span></div><div><Clock3/><span><b>Consultá tiempos</b><small>Según cada reparación</small></span></div></section>
       <section className="section services-section" id="servicios"><div className="section-title"><div><span className="eyebrow">QUÉ PODEMOS HACER POR VOS</span><h2>Soluciones para seguir conectado.</h2><p>Revisamos tu equipo y te orientamos sobre la reparación que necesita.</p></div><span className="section-index">01 — SERVICIOS</span></div><div className="services-grid">{visibleServices.map((s,i)=>{const Icon=serviceIcons[s.icon] || Wrench;return <article className="service-card" key={s.id}><span className="service-number">0{i+1}</span><div className="service-icon"><Icon size={25}/></div><h3>{s.title}</h3><p>{s.description}</p><a href={whatsappLink || '#contacto'} target={whatsappLink ? '_blank' : undefined} rel="noreferrer">Consultar servicio <ArrowRight size={16}/></a></article>})}</div></section>
-      {galleryPhotos.length > 0 && <section className="section gallery-section" id="trabajos"><div className="section-title"><div><span className="eyebrow">TRABAJOS REALES</span><h2>Detrás de cada arreglo, hay una solución.</h2><p>Algunos de los trabajos que fuimos realizando.</p></div><span className="section-index">02 — GALERÍA</span></div><div className="gallery-viewer"><img src={activePhoto?.image_url} alt={activePhoto?.title || 'Trabajo de reparación'}/><div className="gallery-caption"><div><span className="eyebrow">TECH ZONE / TRABAJO REALIZADO</span><h3>{activePhoto?.title}</h3><p>{activePhoto?.description}</p></div>{galleryPhotos.length > 1 && <div className="gallery-controls"><button className="icon-btn" onClick={()=>setSlide((slide-1+galleryPhotos.length)%galleryPhotos.length)} aria-label="Foto anterior"><ChevronLeft/></button><span>{(slide%galleryPhotos.length)+1} / {galleryPhotos.length}</span><button className="icon-btn" onClick={()=>setSlide((slide+1)%galleryPhotos.length)} aria-label="Foto siguiente"><ChevronRight/></button></div>}</div></div></section>}
+      <section className="section gallery-section" id="accesorios-3d"><div className="section-title"><div><span className="eyebrow">NUEVA CATEGORÍA</span><h2>Accesorios para celulares impresos en 3D</h2></div></div><div className="empty"><Smartphone size={34}/><b>PRÓXIMAMENTE VAN A VER NOVEDADES AQUÍ</b></div></section>
+      {galleryPhotos.length > 0 && <section className="section gallery-section" id="trabajos"><div className="section-title"><div><span className="eyebrow">TRABAJOS REALES</span><h2>Detrás de cada arreglo, hay una solución.</h2><p>Algunos de los trabajos que fuimos realizando.</p></div><span className="section-index">02 — GALERÍA</span></div><div className="gallery-viewer">{activePhoto?.media_type === 'video' ? <video className="gallery-media" src={activePhoto.image_url} controls playsInline preload="metadata" aria-label={activePhoto.title || 'Video de trabajo realizado'} /> : <img src={activePhoto?.image_url} alt={activePhoto?.title || 'Trabajo de reparación'}/>}<div className="gallery-caption"><div><span className="eyebrow">TECH ZONE / TRABAJO REALIZADO</span><h3>{activePhoto?.title}</h3><p>{activePhoto?.description}</p></div>{galleryPhotos.length > 1 && <div className="gallery-controls"><button className="icon-btn" onClick={()=>setSlide((slide-1+galleryPhotos.length)%galleryPhotos.length)} aria-label="Foto anterior"><ChevronLeft/></button><span>{(slide%galleryPhotos.length)+1} / {galleryPhotos.length}</span><button className="icon-btn" onClick={()=>setSlide((slide+1)%galleryPhotos.length)} aria-label="Foto siguiente"><ChevronRight/></button></div>}</div></div></section>}
       <section className="contact-section" id="contacto"><div className="contact-copy"><span className="eyebrow">¿TU EQUIPO NECESITA AYUDA?</span><h2>Contanos qué le pasa.<br/><em>Lo vemos juntos.</em></h2><p>Escribinos con la marca y el modelo de tu equipo, y contanos cuál es la falla. Te respondemos para orientarte.</p><div className="contact-actions">{whatsappLink && <a className="btn primary" href={whatsappLink} target="_blank" rel="noreferrer"><MessageCircle size={18}/> Escribir por WhatsApp <ArrowRight size={17}/></a>}{instagramLink && <a className="btn outline" href={instagramLink} target="_blank" rel="noreferrer"><Instagram size={18}/> Instagram</a>}</div></div><div className="contact-card"><div className="contact-logo"><img src="/tech-zone-logo.png" alt="Tech Zone"/></div><h3>{settings.business_name || 'Tech Zone'}</h3><p>{settings.tagline || defaultSettings.tagline}</p><div className="contact-detail"><MapPin/><span><small>UBICACIÓN</small><b>{settings.address || 'Consultar ubicación'}</b></span></div>{settings.phone && <div className="contact-detail"><Phone/><span><small>TELÉFONO</small><b>{settings.phone}</b></span></div>}{settings.hours && <div className="contact-detail"><Clock3/><span><small>HORARIOS</small><b>{settings.hours}</b></span></div>}{instagramLink && <a className="contact-detail" href={instagramLink} target="_blank" rel="noreferrer"><Instagram/><span><small>INSTAGRAM</small><b>{settings.instagram}</b></span><ArrowRight className="detail-arrow"/></a>}</div></section>
     </main>}
     <footer className="footer"><a href="#inicio" className="footer-brand"><img src="/tech-zone-logo.png" alt="Tech Zone"/> <span><b>TECH ZONE</b><small>REPARACIÓN Y SERVICIO TÉCNICO</small></span></a><span>© {new Date().getFullYear()} Tech Zone. Todos los derechos reservados.</span><button className="footer-admin" onClick={()=>{setView('admin');setNotice('')}}><LockKeyhole size={14}/> Administrador</button></footer>
